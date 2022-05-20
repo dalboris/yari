@@ -2,7 +2,7 @@ import * as React from "react";
 import useSWR from "swr";
 
 import { DISABLE_AUTH, DEFAULT_GEO_COUNTRY } from "./env";
-import { MDNWorker } from "./offline-settings/mdn-worker";
+import { MDNWorker } from "./settings/mdn-worker";
 
 export enum SubscriptionType {
   MDN_CORE = "",
@@ -11,6 +11,10 @@ export enum SubscriptionType {
   MDN_PLUS_10M = "mdn_plus_10m",
   MDN_PLUS_10Y = "mdn_plus_10y",
 }
+
+export type UserPlusSettings = {
+  colInSearch: boolean;
+};
 
 export type UserData = {
   username: string | null | undefined;
@@ -27,10 +31,12 @@ export type UserData = {
   geo: {
     country: string;
   };
+  settings: null | UserPlusSettings;
   mdnWorker?: MDNWorker;
+  mutate: () => void;
 };
 
-const UserDataContext = React.createContext<UserData | null>(null);
+export const UserDataContext = React.createContext<UserData | null>(null);
 
 // The argument for using sessionStorage rather than localStorage is because
 // it's marginally simpler and "safer". For example, if we use localStorage
@@ -81,7 +87,7 @@ function setSessionStorageData(data: UserData) {
 }
 
 export function UserDataProvider(props: { children: React.ReactNode }) {
-  const { data } = useSWR<UserData | null, Error | null>(
+  const { data, mutate } = useSWR<UserData | null, Error | null>(
     DISABLE_AUTH ? null : "/api/v1/whoami",
     async (url) => {
       const response = await fetch(url);
@@ -90,6 +96,12 @@ export function UserDataProvider(props: { children: React.ReactNode }) {
         throw new Error(`${response.status} on ${response.url}`);
       }
       const data = await response.json();
+      const settings: UserPlusSettings | null = data.settings
+        ? {
+            colInSearch: data.settings.col_in_search || false,
+          }
+        : null;
+
       return {
         username: data.username || null,
         isAuthenticated: data.is_authenticated || false,
@@ -98,12 +110,17 @@ export function UserDataProvider(props: { children: React.ReactNode }) {
         isSuperuser: data.is_super_user || false,
         avatarUrl: data.avatar_url || null,
         isSubscriber: data.is_subscriber || false,
-        subscriptionType: data.subscription_type ?? null,
+        subscriptionType:
+          data.subscription_type === "core"
+            ? SubscriptionType.MDN_CORE
+            : data.subscription_type ?? null,
         subscriberNumber: data.subscriber_number || null,
         email: data.email || null,
         geo: {
           country: (data.geo && data.geo.country) || DEFAULT_GEO_COUNTRY,
         },
+        settings,
+        mutate,
       };
     }
   );
@@ -116,7 +133,7 @@ export function UserDataProvider(props: { children: React.ReactNode }) {
 
       // Let's initialize the MDN Worker if the user is signed in.
       if (!window.mdnWorker && data?.isAuthenticated) {
-        import("./offline-settings/mdn-worker");
+        import("./settings/mdn-worker");
       } else if (window.mdnWorker && data?.isAuthenticated === false) {
         window.mdnWorker.disableServiceWorker();
       }

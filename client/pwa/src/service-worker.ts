@@ -36,7 +36,7 @@ declare const self: ServiceWorkerGlobalScope;
 var unpacking = Promise.resolve();
 
 self.addEventListener("install", (e) => {
-  // synchronizeDb();
+  synchronizeDb();
   e.waitUntil(
     SW_TYPE === SwType.ApiOnly
       ? self.skipWaiting()
@@ -72,8 +72,8 @@ self.addEventListener("fetch", (e) => {
   } else {
     e.respondWith(respond(e));
   }
-  if (e.request.method === "POST") {
-    synchronizeDb();
+  if (e.request.method !== "GET") {
+    messageAllClients(self, { type: "mutate" });
   }
 });
 
